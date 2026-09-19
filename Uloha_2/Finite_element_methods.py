@@ -3,7 +3,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
-
+from scipy.sparse import  csr_matrix
 
 
 class FEM_Methods:
@@ -150,7 +150,7 @@ class FEM_Methods:
                     Global_k[global_i,global_j]+= K[i,j]
             k+=1
         self.Global_Stiffness_matrix= Global_k
-        return Global_k
+        return csr_matrix(Global_k)
 
     def Generate_Global_Matrices_Time(self):
         Global_k= np.zeros((self.Nodes.T[0].size,self.Nodes.T[0].size))
@@ -170,6 +170,4 @@ class FEM_Methods:
             k+=1
         self.Global_Stiffness_matrix= Global_k
         self.Global_mass_matrix= Global_m
-        return Global_k,Global_m
-
-
+        return csr_matrix(Global_k),csr_matrix(Global_m)

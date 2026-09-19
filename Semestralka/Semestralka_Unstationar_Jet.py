@@ -1,17 +1,10 @@
-from operator import truediv
-
 import numpy as np
-
-from Nodes_elements_operations import Nodes_elements_operations
-import scipy.sparse as sp
+from scipy.interpolate import griddata
+from Uloha_2.Nodes_elements_operations import Nodes_elements_operations
 from Finite_element_methods import FEM_Methods
-import scipy.sparse.linalg as spla
-import matplotlib.pyplot as plt
 from Time_Iteration_Process import GenerationofTime
 import matplotlib.tri as mtri
-from Conditions import Boundary_conditions
-from scipy.sparse.linalg import splu
-import matplotlib
+from Uloha_2.Conditions import Boundary_conditions
 #matplotlib.use('TkAgg')
 from scipy.spatial import Delaunay
 
@@ -27,7 +20,7 @@ Topeni_x=2
 Topeni_y=1
 
 lambda_zed = 0.5
-lambda_vzduch = 50.0
+lambda_vzduch =150
 lambda_topidlo = 1.0
 rho_topeni=1800
 rho_vzduch=1.3
@@ -43,9 +36,15 @@ Q=600
 Time_steps= 200
 t_1 , t_end= 0,100*86400
 Time= np.linspace(t_1, t_end, Time_steps)
-
+velocity=0.3
 Nodes_x= np.linspace(0,L_x,N_x)
 Nodes_y= np.linspace(0,L_y,N_y)
+
+
+l_x_source=0.6
+l_y_source= 0.4
+
+
 Nodes_x,Nodes_y = np.meshgrid(Nodes_x,Nodes_y)
 Nodes=np.vstack([Nodes_x.ravel(),Nodes_y.ravel()]).T
 F_right_side= np.zeros(Nodes[:,0].size)
@@ -56,18 +55,46 @@ elements_idx= tri.simplices
 elements= Nodes[elements_idx]
 elements_lambda= None
 
+
 fem_methods = FEM_Methods(Nodes ,elements_idx, L_x, L_y,
-      Topeni_x, Topeni_y, lambda_vzduch, lambda_zed, lambda_topidlo, c_topeni,c_zed,c_vzduch, rho_topeni, rho_zed, rho_vzduch)
+      Topeni_x, Topeni_y, lambda_vzduch, lambda_zed, lambda_topidlo, c_topeni,c_zed,c_vzduch, rho_topeni, rho_zed, rho_vzduch, velocity)
+
+Nodes_air= fem_methods.Generate_Nodes_of_air()
+#fem_methods.Plot_Nodes_of_air()
+
+valid_mask = ~np.isnan(Nodes_air[:, 0])
+x_air = Nodes_air[valid_mask, 0]
+y_air = Nodes_air[valid_mask, 1]
+v_x,v_y= fem_methods.Generate_Velocity_vector(x_air, y_air)
+grid_x, grid_y = np.meshgrid(
+    np.linspace(x_air.min(), x_air.max(), 150),
+    np.linspace(y_air.min(), y_air.max(), 150)
+)
+
+grid_vx = griddata((x_air, y_air), v_x, (grid_x, grid_y), method='linear')
+grid_vy = griddata((x_air, y_air), v_y, (grid_x, grid_y), method='linear')
+x_min_top, x_max_top = 1.0, 3.0  # Uprav dle své proměnné self.zed_tloustka + self.Width_topeni
+y_min_top, y_max_top = 1.0, 2.0  # Uprav dle své proměnné self.zed_tloustka + self.Height_topeni
+
+is_inside_heater = (grid_x >= x_min_top) & (grid_x <= x_max_top) & \
+                    (grid_y >= y_min_top) & (grid_y <= y_max_top)
+
+grid_vx[is_inside_heater] = np.nan
+grid_vy[is_inside_heater] = np.nan
 
 
-Global_K, Global_M =fem_methods.Generate_Global_Matrices_Time()#fem_methods.GenerateD_matrix()
+
+
+Global_K, Global_M =fem_methods.Generate_Global_Matrices_Time_jet()#fem_methods.GenerateD_matrix()
 Outter_nodes_indicies=Nodes_elements_operations.GenerateOuterNodes(Nodes, L_x, L_y,)
-Source_node= Nodes_elements_operations.Generate_point_source_node(L_x, L_y, N_x, N_y,
-                                                                Nodes, Topeni_x, Topeni_y,zed)
+Source_node= Nodes_elements_operations.Generate_point_source_node(L_x, L_y, N_x, N_y,Nodes, Topeni_x, Topeni_y,zed)
+(source_couples_vertical,
+ source_couples_horizontal) = Nodes_elements_operations.Generate_Source(Nodes, l_x_source, l_y_source,Source_node)
 
 #Edges_id_horizontal, Edges_id_vertical= Nodes_elements_operations.Generate_edges_couples_for_Newton(Nodes, L_x, L_y, N_x, N_y,)
-Boundary_conditions.Give_source(Q, Source_node, F_right_side)
+#Boundary_conditions.Give_source(Q, Source_node, F_right_side)
 #Boundary_conditions.Generate_Dirichlet( Outter_nodes_indicies,Global_K ,F_right_side,T_out)
+Boundary_conditions.Generate_Heat_Source_widespread(Q, F_right_side,L_x, L_y, N_x, N_y,source_couples_vertical, source_couples_horizontal,l_x_source, l_y_source)
 Boundary_conditions.Generate_Newton(Nodes, L_x, L_y, N_x, N_y,F_right_side, T_okolni, Global_K, alpha_prestup)
 T= GenerationofTime.Solve_time_equation(T_init, Global_K ,Global_M, Time, F_right_side)#spla.spsolve(Global_K, F_right_side)
 
@@ -80,9 +107,9 @@ Thermal_vectors=  Nodes_elements_operations.Generate_Thermal_dependence_in_key_p
 triangulation = mtri.Triangulation(Nodes[:, 0], Nodes[:, 1], elements_idx)
 
 indicies_profile= np.argwhere(Nodes[:,1]==5).reshape(N_x)
-#PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[0], Nodes, Element_view=False, time=Time[0])
-#PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[25], Nodes, Element_view=False, time=Time[25])
-#PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[50], Nodes, Element_view=False, time=Time[50])
+PlottingFunctions.Plot_Thermal_mapping_time_with_jets(triangulation, T[100], Nodes, Element_view=False, time=Time[100], grid_vx=grid_vx, grid_vy=grid_vy, grid_x=grid_x, grid_y=grid_y )
+#PlottingFunctions.Plot_Thermal_mapping_time_with_jets(triangulation, T[25], Nodes, Element_view=False, time=Time[25], grid_vx=grid_vx, grid_vy=grid_vy, grid_x=grid_x, grid_y=grid_y  )
+PlottingFunctions.Plot_Thermal_mapping_time_with_jets(triangulation, T[-1], Nodes, Element_view=False, time=Time[-1],grid_vx=grid_vx, grid_vy=grid_vy, grid_x=grid_x, grid_y=grid_y  )
 #PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[75], Nodes, Element_view=False, time=Time[75])
 #PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[100], Nodes, Element_view=False,time= Time[100])
 #PlottingFunctions.Plot_Thermal_mapping_time(triangulation, T[125], Nodes, Element_view=False, time=Time[125])

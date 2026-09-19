@@ -1,18 +1,11 @@
-from operator import truediv
-
 import numpy as np
 
-from Nodes_elements_operations import Nodes_elements_operations
-import scipy.sparse as sp
-
+from Uloha_2.Nodes_elements_operations import Nodes_elements_operations
 
 from Finite_element_methods import FEM_Methods
 import scipy.sparse.linalg as spla
-import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
-from Conditions import Boundary_conditions
-from scipy.sparse.linalg import splu
-import matplotlib
+from Uloha_2.Conditions import Boundary_conditions
 #matplotlib.use('TkAgg')
 from scipy.spatial import Delaunay
 
@@ -42,8 +35,7 @@ T_pocatecni=10
 zed=1
 Q=600
 
-l_x_source=0.6
-l_y_source= 0.4
+
 Nodes_x= np.linspace(0,L_x,N_x)
 Nodes_y= np.linspace(0,L_y,N_y)
 Nodes_x,Nodes_y = np.meshgrid(Nodes_x,Nodes_y)
@@ -52,17 +44,21 @@ F_right_side_D= np.zeros(Nodes[:,0].size)
 F_right_side_N= np.zeros(Nodes[:,0].size)
 tri=Delaunay(Nodes)
 elements_idx= tri.simplices
-
+l_x_source=0.6
+l_y_source= 0.4
 elements= Nodes[elements_idx]
 elements_lambda= None
-
+velocity=0.3
 fem_methods = FEM_Methods(Nodes ,elements_idx, L_x, L_y,
-      Topeni_x, Topeni_y, lambda_vzduch, lambda_zed, lambda_topidlo, c_topeni,c_zed,c_vzduch, rho_topeni, rho_zed, rho_vzduch)
+      Topeni_x, Topeni_y, lambda_vzduch, lambda_zed, lambda_topidlo, c_topeni,c_zed,c_vzduch, rho_topeni, rho_zed, rho_vzduch,velocity)
 
 
 Global_K_D=fem_methods.Generate_Global_Stiffness_matrix()#fem_methods.GenerateD_matrix()
-Global_K_N=fem_methods.Generate_Global_Stiffness_matrix()
+Global_K_N=fem_methods.Generate_Global_Stiffness_matrix_Jet()
 Outter_nodes_indicies=Nodes_elements_operations.GenerateOuterNodes(Nodes, L_x, L_y,)
+
+
+#Edges_id_horizontal, Edges_id_vertical= Nodes_elements_operations.Generate_edges_couples_for_Newton(Nodes, L_x, L_y, N_x, N_y,)
 Source_node= Nodes_elements_operations.Generate_point_source_node(L_x, L_y, N_x, N_y,Nodes, Topeni_x, Topeni_y,zed)
 (source_couples_vertical,
  source_couples_horizontal) = Nodes_elements_operations.Generate_Source(Nodes, l_x_source, l_y_source,Source_node)
@@ -71,7 +67,7 @@ Boundary_conditions.Generate_Heat_Source_widespread(Q, F_right_side_N,L_x, L_y, 
 #Boundary_conditions.Generate_Dirichlet( Outter_nodes_indicies,Global_K_D,F_right_side_D,T_okolni)
 Boundary_conditions.Generate_Newton(Nodes, L_x, L_y, N_x, N_y,F_right_side_N, T_okolni, Global_K_N, alpha_prestup)
 T_N= spla.spsolve(Global_K_N, F_right_side_N)
-T_D= spla.spsolve(Global_K_D, F_right_side_D)
+
 
 
 
